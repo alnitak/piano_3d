@@ -23,9 +23,11 @@ class AudioController {
   final Set<int> _pressedKeys = {};
 
   // FFT buffer for visualization
-  final Float32List _fftBuffer = Float32List(166); // Bins 15 to 180 inclusive (166 bins)
+  final Float32List _fftBuffer = Float32List(
+    166,
+  ); // Bins 15 to 180 inclusive (166 bins)
   final Float32List _smoothedFft = Float32List(166);
-  
+
   // Continuous 256 rows x 512 cols history texture buffer
   final Float32List _historyTexture = Float32List(256 * 512);
 
@@ -59,6 +61,7 @@ class AudioController {
     SoLoud.instance.setMaxActiveVoiceCount(32);
     SoLoud.instance.setAudioDeviceIdleTimeout(null);
     SoLoud.instance.setVisualizationEnabled(true);
+    SoLoud.instance.setFftSmoothing(0.99);
 
     _statusMessage = 'Loading SoundFont: $soundFontAsset...';
 

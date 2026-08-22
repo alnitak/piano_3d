@@ -5,8 +5,8 @@ import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
 /// High-detail 256x256 double-sided triangulated mesh plane reacting to 2D texture FFT audio data.
-/// Fresh incoming FFT values form a ring at 10% radius from sea center, expanding outwards
-/// over time to 100% of sea width while attenuating down to 0 like water droplet ripples.
+/// Fresh incoming FFT values form a ring at 10% radius from sea center (increasing from 0° to 180°,
+/// decreasing from 180° to 360°), expanding outwards over time to 100% of sea width while attenuating to 0.
 class SeaPlane {
   static const int cols = 256;
   static const int rows = 256;
@@ -138,6 +138,7 @@ class SeaPlane {
 
   /// Updates mesh vertices, normals, and vertex colors.
   /// Incoming audio FFT values form a ring at 10% radius from the sea center.
+  /// Bins are mapped increasing from 0° to 180°, and decreasing from 180° to 360°.
   /// Over time, the ring expands outward to 100% of sea width and decreases to 0.
   void update(double time, Float32List fftData, [Float32List? texture2dData]) {
     final dx = width / (cols - 1);
@@ -191,12 +192,18 @@ class SeaPlane {
           texRow = 255;
         }
 
-        // Angle around center [-pi, pi] mapped to [0, 1]
-        final angle = math.atan2(-relZ, relX);
-        final normAngle = (angle + math.pi) / (2.0 * math.pi);
+        // Angle around center [0, 2*pi]
+        final angle = math.atan2(relZ, relX);
+        final angleRad = angle < 0 ? (angle + 2.0 * math.pi) : angle;
 
-        // Frequency bin in the 15..180 range
-        final bin = (15 + (normAngle * 165.0).toInt()).clamp(15, 180);
+        // 0° to 180°: increasing (0.0 -> 1.0)
+        // 180° to 360°: decreasing (1.0 -> 0.0)
+        final double t = angleRad <= math.pi
+            ? angleRad / math.pi
+            : (2.0 * math.pi - angleRad) / math.pi;
+
+        // Map t in [0, 1] to FFT frequency bins in the 15..180 range
+        final bin = (15 + (t * 165.0).toInt()).clamp(15, 180);
 
         double rawFft = 0.0;
 
@@ -206,7 +213,7 @@ class SeaPlane {
             rawFft = texture2dData[texIdx];
           }
         } else if (fftLen > 0) {
-          final fallbackBin = ((normAngle * (fftLen - 1)).clamp(
+          final fallbackBin = ((t * (fftLen - 1)).clamp(
             0,
             fftLen - 1,
           )).toInt();
