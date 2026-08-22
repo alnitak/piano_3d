@@ -1,0 +1,30 @@
+name: piano_3d
+description: "A new Flutter project."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.14.0-147.0.dev
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_scene: ^0.22.2
+  vector_math: ^2.1.4
+  flutter_soloud:
+    path: /Volumes/NVME/workspace/libs/flutter_soloud
+  soundfont_kit:
+    path: /Volumes/NVME/workspace/libs/soundfont_kit
+  hooks: ^2.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - flutter_scene_generated/
+    - assets/SFX_StarWars_weapons.SF2
+
