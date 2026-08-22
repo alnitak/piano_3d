@@ -27,4 +27,4 @@ flutter:
   assets:
     - flutter_scene_generated/
     - assets/SFX_StarWars_weapons.SF2
-
+    - assets/RatAttack.sf2

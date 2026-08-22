@@ -388,6 +388,58 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
               ),
               const Spacer(),
 
+              // SoundFont Selector Dropdown
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _audio.currentSoundFontAsset,
+                    dropdownColor: const Color(0xFF1E293B),
+                    icon: const Icon(
+                      Icons.music_note,
+                      color: Color(0xFF00D2FF),
+                      size: 16,
+                    ),
+                    items: AudioController.availableSoundFonts.map((sf) {
+                      final name = sf.split('/').last;
+                      return DropdownMenuItem<String>(
+                        value: sf,
+                        child: Text(
+                          name,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                    onChanged: (val) async {
+                      if (val != null && val != _audio.currentSoundFontAsset) {
+                        await _audio.loadSoundFont(
+                          val,
+                          onProgress: (p) => setState(() {}),
+                        );
+                        setState(() {
+                          _selectedPresetIndex = 0;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
               // Preset Selector Dropdown
               if (_audio.presets.isNotEmpty) ...[
                 Container(
@@ -404,7 +456,9 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
-                      value: _selectedPresetIndex,
+                      value: _selectedPresetIndex < _audio.presets.length
+                          ? _selectedPresetIndex
+                          : 0,
                       dropdownColor: const Color(0xFF1E293B),
                       icon: const Icon(
                         Icons.keyboard_arrow_down,

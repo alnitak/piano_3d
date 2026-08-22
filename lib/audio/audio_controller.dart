@@ -10,6 +10,12 @@ class AudioController {
   static final AudioController instance = AudioController._();
   AudioController._();
 
+  static const List<String> availableSoundFonts = [
+    'assets/SFX_StarWars_weapons.SF2',
+    'assets/RatAttack.sf2',
+  ];
+
+  String _currentSoundFontAsset = 'assets/SFX_StarWars_weapons.SF2';
   SoundFontFile? _soundFont;
   SoundFontPlayer? _player;
   AudioData? _audioData;
@@ -23,9 +29,7 @@ class AudioController {
   final Set<int> _pressedKeys = {};
 
   // FFT buffer for visualization
-  final Float32List _fftBuffer = Float32List(
-    166,
-  ); // Bins 15 to 180 inclusive (166 bins)
+  final Float32List _fftBuffer = Float32List(166); // Bins 15 to 180 inclusive (166 bins)
   final Float32List _smoothedFft = Float32List(166);
 
   // Continuous 256 rows x 512 cols history texture buffer
@@ -35,6 +39,7 @@ class AudioController {
   bool get isPreloaded => _isPreloaded;
   double get preloadProgress => _preloadProgress;
   String? get statusMessage => _statusMessage;
+  String get currentSoundFontAsset => _currentSoundFontAsset;
   SoundFontFile? get soundFont => _soundFont;
   SoundFontPlayer? get player => _player;
   List<Preset> get presets => _soundFont?.presets ?? [];
@@ -61,9 +66,28 @@ class AudioController {
     SoLoud.instance.setMaxActiveVoiceCount(32);
     SoLoud.instance.setAudioDeviceIdleTimeout(null);
     SoLoud.instance.setVisualizationEnabled(true);
-    // SoLoud.instance.setFftSmoothing(0.99);
 
+    // Initialize 2D texture audio data for FFT extraction (256 rows x 512 cols)
+    _audioData = AudioData(GetSamplesKind.texture);
+
+    await loadSoundFont(soundFontAsset, onProgress: onProgress);
+    _isInitialized = true;
+  }
+
+  /// Loads or switches the active SoundFont asset and preloads all samples.
+  Future<void> loadSoundFont(
+    String soundFontAsset, {
+    void Function(double progress)? onProgress,
+  }) async {
     _statusMessage = 'Loading SoundFont: $soundFontAsset...';
+    _isPreloaded = false;
+    _currentSoundFontAsset = soundFontAsset;
+
+    // Stop active voices
+    await stopAll();
+    _player?.dispose();
+    _player = null;
+    _soundFont = null;
 
     try {
       _soundFont = await SoundFontFile.fromAsset(soundFontAsset);
@@ -72,13 +96,8 @@ class AudioController {
       _player!.sustainMultiplier = 0.01;
       _player!.sustainTime = 0.01;
 
-      // Initialize 2D texture audio data for FFT extraction (256 rows x 512 cols)
-      _audioData = AudioData(GetSamplesKind.texture);
-
       _statusMessage = 'Preloading SoundFont samples...';
-      _isPreloaded = false;
 
-      // Preload all audio samples for zero-latency playback
       await _player!.preloadAll(
         onProgress: (progress, loaded, total) {
           _preloadProgress = progress;
@@ -87,11 +106,11 @@ class AudioController {
       );
 
       _isPreloaded = true;
-      _isInitialized = true;
-      _statusMessage = 'Ready (${_soundFont!.presets.length} presets loaded)';
+      final assetName = soundFontAsset.split('/').last;
+      _statusMessage = 'Ready: $assetName (${_soundFont!.presets.length} presets)';
     } catch (e) {
-      _statusMessage = 'Error initializing audio: $e';
-      debugPrint('AudioController initialization error: $e');
+      _statusMessage = 'Error loading SoundFont $soundFontAsset: $e';
+      debugPrint('AudioController error: $e');
     }
   }
 
@@ -152,8 +171,6 @@ class AudioController {
   }
 
   /// Updates audio FFT data every frame. Extracts the 15 to 180 frequency bin range.
-  /// Continuously shifts 2D history rows outward every frame so expanding wave ripples
-  /// continue marching all the way to the edge of the sea plane even after sound finishes.
   void updateFft([double dt = 0.016]) {
     if (!_isInitialized || _audioData == null) return;
 
@@ -162,7 +179,6 @@ class AudioController {
       final data = _audioData!.getAudioData();
 
       // 1. Shift all 256 rows forward by 1 row (row 0..254 -> row 1..255)
-      // This drives the continuous physical outward propagation of water ripples
       _historyTexture.setRange(512, 256 * 512, _historyTexture, 0);
 
       // 2. Insert new live audio frame at row 0
@@ -183,12 +199,10 @@ class AudioController {
               ? data[binIndex].clamp(0.0, 1.0)
               : 0.0;
           _fftBuffer[i] = rawVal;
-          // Exponential smoothing for HUD bar visualizer
           _smoothedFft[i] = _smoothedFft[i] * 0.60 + rawVal * 0.40;
           if (_smoothedFft[i] < 0.01) _smoothedFft[i] = 0.0;
         }
       } else {
-        // No new audio incoming: insert silence at row 0 (center) while existing ripples march outward
         _historyTexture.fillRange(0, 512, 0.0);
         for (var i = 0; i < _smoothedFft.length; i++) {
           _smoothedFft[i] = 0.0;
