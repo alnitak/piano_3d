@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
@@ -19,12 +20,12 @@ class CameraOrbitController {
   CameraOrbitController({
     vm.Vector3? target,
     this.yaw = 0.0,
-    this.pitch = 0.48,
-    this.distance = 3.6,
-  })  : target = target ?? vm.Vector3(0.0, 0.15, 0.45),
-        _targetYaw = yaw,
-        _targetPitch = pitch,
-        _targetDistance = distance;
+    this.pitch = 0.44,
+    this.distance = 2.2,
+  }) : target = target ?? vm.Vector3(0.0, 1.935, 0.20),
+       _targetYaw = yaw,
+       _targetPitch = pitch,
+       _targetDistance = distance;
 
   /// Adds delta yaw and pitch from pointer drag.
   void rotate(double deltaX, double deltaY) {
@@ -32,19 +33,19 @@ class CameraOrbitController {
     _targetPitch += deltaY * 0.0055;
 
     // Clamp pitch so camera stays comfortably above the piano
-    _targetPitch = _targetPitch.clamp(0.08, 1.38);
+    _targetPitch = _targetPitch.clamp(0.05, 1.38);
   }
 
   /// Adds zoom / dolly delta.
   void zoom(double deltaZoom) {
-    _targetDistance = (_targetDistance + deltaZoom).clamp(1.8, 10.0);
+    _targetDistance = (_targetDistance + deltaZoom).clamp(1.2, 8.0);
   }
 
   /// Resets to default vantage view.
   void reset() {
     _targetYaw = 0.0;
-    _targetPitch = 0.48;
-    _targetDistance = 3.6;
+    _targetPitch = 0.44;
+    _targetDistance = 2.2;
   }
 
   /// Updates smooth camera easing.
@@ -79,7 +80,12 @@ class CameraOrbitController {
   }
 
   /// Exact 3D ray generation from screen coordinates using the camera's inverse View-Projection matrix.
-  Ray screenPointToRay(double screenX, double screenY, double viewportWidth, double viewportHeight) {
+  Ray screenPointToRay(
+    double screenX,
+    double screenY,
+    double viewportWidth,
+    double viewportHeight,
+  ) {
     final eye = getEyePosition();
     const fovY = 50.0 * vm.degrees2Radians;
     final aspect = viewportWidth / viewportHeight;

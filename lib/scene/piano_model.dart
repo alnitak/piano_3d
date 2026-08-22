@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
@@ -37,9 +38,9 @@ class PianoKeyInfo {
 
   /// Checks if a 3D ray intersects this key's bounding box. Returns distance t or null.
   double? intersectRay(vm.Vector3 rayOrigin, vm.Vector3 rayDir) {
-    final halfW = width / 2.0 + 0.015; // hit tolerance padding
-    final halfH = height / 2.0 + 0.03;
-    final halfL = length / 2.0 + 0.015;
+    final halfW = width / 2.0 + 0.008; // hit tolerance padding
+    final halfH = height / 2.0 + 0.015;
+    final halfL = length / 2.0 + 0.008;
 
     final minX = xPos - halfW;
     final maxX = xPos + halfW;
@@ -104,24 +105,27 @@ class PianoKeyInfo {
   }
 }
 
-/// 3D Model of a 2-octave piano keyboard with polished materials, specularity, and interactive keys.
+/// 3D Model of a 2-octave piano keyboard (half-size, elevated by half width) with polished materials.
 class PianoModel {
   final Node rootNode = Node(name: 'PianoRoot');
   final List<PianoKeyInfo> keys = [];
   final Map<Node, PianoKeyInfo> _nodeToKey = {};
 
-  // Key dimensions
-  static const double whiteKeyWidth = 0.22;
-  static const double whiteKeyLength = 1.12;
-  static const double whiteKeyHeight = 0.13;
-  static const double whiteKeyGap = 0.008;
+  // Half-size Key dimensions
+  static const double whiteKeyWidth = 0.11;
+  static const double whiteKeyLength = 0.56;
+  static const double whiteKeyHeight = 0.065;
+  static const double whiteKeyGap = 0.004;
 
-  static const double blackKeyWidth = 0.12;
-  static const double blackKeyLength = 0.68;
-  static const double blackKeyHeight = 0.15;
+  static const double blackKeyWidth = 0.06;
+  static const double blackKeyLength = 0.34;
+  static const double blackKeyHeight = 0.075;
 
   static const int startMidi = 48; // C3
   static const int totalKeys = 25; // C3 to C5 (2 octaves)
+
+  late final double totalWidth;
+  late final double baseY;
 
   late final PhysicallyBasedMaterial _whiteKeyMaterial;
   late final PhysicallyBasedMaterial _blackKeyMaterial;
@@ -176,12 +180,42 @@ class PianoModel {
   }
 
   void _buildPiano() {
-    final noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-    final isBlackPattern = [false, true, false, true, false, false, true, false, true, false, true, false];
+    final noteNames = [
+      'C',
+      'C#',
+      'D',
+      'D#',
+      'E',
+      'F',
+      'F#',
+      'G',
+      'G#',
+      'A',
+      'A#',
+      'B',
+    ];
+    final isBlackPattern = [
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      true,
+      false,
+    ];
 
     // Shared key meshes
-    final whiteGeometry = CuboidGeometry(vm.Vector3(whiteKeyWidth, whiteKeyHeight, whiteKeyLength));
-    final blackGeometry = CuboidGeometry(vm.Vector3(blackKeyWidth, blackKeyHeight, blackKeyLength));
+    final whiteGeometry = CuboidGeometry(
+      vm.Vector3(whiteKeyWidth, whiteKeyHeight, whiteKeyLength),
+    );
+    final blackGeometry = CuboidGeometry(
+      vm.Vector3(blackKeyWidth, blackKeyHeight, blackKeyLength),
+    );
 
     // Calculate total white keys to center keyboard at X = 0
     var whiteCount = 0;
@@ -190,7 +224,10 @@ class PianoModel {
       if (!isBlackPattern[semitone]) whiteCount++;
     }
 
-    final totalWidth = whiteCount * (whiteKeyWidth + whiteKeyGap);
+    totalWidth = whiteCount * (whiteKeyWidth + whiteKeyGap);
+    // Position upper by half of the keyboard width
+    baseY = totalWidth / 2.0;
+
     final startX = -totalWidth / 2.0 + whiteKeyWidth / 2.0;
 
     double currentWhiteX = startX;
@@ -208,8 +245,8 @@ class PianoModel {
 
       if (!isBlack) {
         x = currentWhiteX;
-        y = 0.0;
-        z = 0.40; // centered in Z
+        y = baseY;
+        z = 0.20; // centered in Z
         w = whiteKeyWidth;
         l = whiteKeyLength;
         h = whiteKeyHeight;
@@ -220,8 +257,8 @@ class PianoModel {
       } else {
         // Position black key offset between neighboring white keys, elevated and pushed towards back (+Z)
         x = lastWhiteX + (whiteKeyWidth + whiteKeyGap) / 2.0;
-        y = 0.045;
-        z = 0.62;
+        y = baseY + 0.022;
+        z = 0.31;
         w = blackKeyWidth;
         l = blackKeyLength;
         h = blackKeyHeight;
@@ -257,66 +294,83 @@ class PianoModel {
   }
 
   void _buildPianoCasing(double keyboardWidth) {
-    final casingWidth = keyboardWidth + 0.45;
-    const centerZ = 0.40;
+    final casingWidth = keyboardWidth + 0.225;
+    const centerZ = 0.20;
 
     // Key bed bottom foundation
-    final bedGeo = CuboidGeometry(vm.Vector3(casingWidth, 0.16, whiteKeyLength + 0.35));
-    final bedNode = Node(
-      name: 'PianoBed',
-      mesh: Mesh(bedGeo, _pianoCaseMaterial),
-    )
-      ..position = vm.Vector3(0.0, -0.12, centerZ + 0.05)
-      ..raycastable = false;
+    final bedGeo = CuboidGeometry(
+      vm.Vector3(casingWidth, 0.08, whiteKeyLength + 0.175),
+    );
+    final bedNode =
+        Node(name: 'PianoBed', mesh: Mesh(bedGeo, _pianoCaseMaterial))
+          ..position = vm.Vector3(0.0, baseY - 0.06, centerZ + 0.025)
+          ..raycastable = false;
     rootNode.add(bedNode);
 
     // Left cheek block
-    final cheekGeo = CuboidGeometry(vm.Vector3(0.18, 0.28, whiteKeyLength + 0.35));
-    final leftCheek = Node(
-      name: 'LeftCheek',
-      mesh: Mesh(cheekGeo, _pianoCaseMaterial),
-    )
-      ..position = vm.Vector3(-keyboardWidth / 2.0 - 0.11, 0.02, centerZ + 0.05)
-      ..raycastable = false;
+    final cheekGeo = CuboidGeometry(
+      vm.Vector3(0.09, 0.14, whiteKeyLength + 0.175),
+    );
+    final leftCheek =
+        Node(name: 'LeftCheek', mesh: Mesh(cheekGeo, _pianoCaseMaterial))
+          ..position = vm.Vector3(
+            -keyboardWidth / 2.0 - 0.055,
+            baseY + 0.01,
+            centerZ + 0.025,
+          )
+          ..raycastable = false;
     rootNode.add(leftCheek);
 
     // Right cheek block
-    final rightCheek = Node(
-      name: 'RightCheek',
-      mesh: Mesh(cheekGeo, _pianoCaseMaterial),
-    )
-      ..position = vm.Vector3(keyboardWidth / 2.0 + 0.11, 0.02, centerZ + 0.05)
-      ..raycastable = false;
+    final rightCheek =
+        Node(name: 'RightCheek', mesh: Mesh(cheekGeo, _pianoCaseMaterial))
+          ..position = vm.Vector3(
+            keyboardWidth / 2.0 + 0.055,
+            baseY + 0.01,
+            centerZ + 0.025,
+          )
+          ..raycastable = false;
     rootNode.add(rightCheek);
 
     // Rear fallboard / back rest (at the back of keys, +Z)
-    final fallboardGeo = CuboidGeometry(vm.Vector3(keyboardWidth + 0.05, 0.45, 0.15));
-    final fallboard = Node(
-      name: 'Fallboard',
-      mesh: Mesh(fallboardGeo, _pianoCaseMaterial),
-    )
-      ..position = vm.Vector3(0.0, 0.18, centerZ + whiteKeyLength / 2.0 + 0.08)
-      ..raycastable = false;
+    final fallboardGeo = CuboidGeometry(
+      vm.Vector3(keyboardWidth + 0.025, 0.225, 0.075),
+    );
+    final fallboard =
+        Node(name: 'Fallboard', mesh: Mesh(fallboardGeo, _pianoCaseMaterial))
+          ..position = vm.Vector3(
+            0.0,
+            baseY + 0.09,
+            centerZ + whiteKeyLength / 2.0 + 0.04,
+          )
+          ..raycastable = false;
     rootNode.add(fallboard);
 
     // Red velvet felt strip along the fallboard
-    final feltGeo = CuboidGeometry(vm.Vector3(keyboardWidth + 0.02, 0.04, 0.05));
-    final felt = Node(
-      name: 'RedFelt',
-      mesh: Mesh(feltGeo, _redFeltMaterial),
-    )
-      ..position = vm.Vector3(0.0, 0.08, centerZ + whiteKeyLength / 2.0 + 0.01)
+    final feltGeo = CuboidGeometry(
+      vm.Vector3(keyboardWidth + 0.01, 0.02, 0.025),
+    );
+    final felt = Node(name: 'RedFelt', mesh: Mesh(feltGeo, _redFeltMaterial))
+      ..position = vm.Vector3(
+        0.0,
+        baseY + 0.04,
+        centerZ + whiteKeyLength / 2.0 + 0.005,
+      )
       ..raycastable = false;
     rootNode.add(felt);
 
     // Gold brass accent lip
-    final goldLipGeo = CuboidGeometry(vm.Vector3(keyboardWidth + 0.05, 0.02, 0.03));
-    final goldLip = Node(
-      name: 'GoldAccent',
-      mesh: Mesh(goldLipGeo, _goldTrimMaterial),
-    )
-      ..position = vm.Vector3(0.0, 0.38, centerZ + whiteKeyLength / 2.0 + 0.01)
-      ..raycastable = false;
+    final goldLipGeo = CuboidGeometry(
+      vm.Vector3(keyboardWidth + 0.025, 0.01, 0.015),
+    );
+    final goldLip =
+        Node(name: 'GoldAccent', mesh: Mesh(goldLipGeo, _goldTrimMaterial))
+          ..position = vm.Vector3(
+            0.0,
+            baseY + 0.19,
+            centerZ + whiteKeyLength / 2.0 + 0.005,
+          )
+          ..raycastable = false;
     rootNode.add(goldLip);
   }
 
@@ -335,13 +389,14 @@ class PianoModel {
     for (final key in keys) {
       final target = key.isPressed ? 1.0 : 0.0;
       // Spring lerp towards target
-      key.currentDepression += (target - key.currentDepression) * math.min(1.0, dt * 28.0);
+      key.currentDepression +=
+          (target - key.currentDepression) * math.min(1.0, dt * 28.0);
 
       // Key depression action: dip front down by rotating around rear edge and translating down
       final dipAngle = -key.currentDepression * 0.050; // radians
-      final dipY = -key.currentDepression * 0.035;
+      final dipY = -key.currentDepression * 0.018;
 
-      final rot = vm.Quaternion.axisAngle(vm.Vector3(1, 0, 0), dipAngle);
+      final rot = vm.Quaternion.axisAngle(vm.Vector3(1, 1, 0), dipAngle);
       key.node.rotation = rot;
       key.node.position = vm.Vector3(
         key.restPosition.x,

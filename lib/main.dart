@@ -66,10 +66,10 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
   void initState() {
     super.initState();
     _cameraController = CameraOrbitController(
-      target: vm.Vector3(0.0, 0.15, 0.45),
+      target: vm.Vector3(0.0, 1.5, 0.20),
       yaw: 0.0,
-      pitch: 0.48,
-      distance: 3.6,
+      pitch: 0.44,
+      distance: 2.2,
     );
 
     _initSceneAndAudio();
@@ -82,9 +82,9 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
     // 2. Build 3D models
     _piano = PianoModel();
     _seaPlane = SeaPlane(
-      width: 32.0,
-      depth: 28.0,
-      origin: vm.Vector3(-16.0, -0.32, -0.65),
+      width: 8.0,
+      depth: 8.0,
+      origin: vm.Vector3(-4.0, -0.04, 0.65),
     );
 
     // 3. Assemble Scene graph
@@ -94,23 +94,24 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
     // 4. Configure Sky Dome & Environment
     _scene.skybox = Skybox(
       GradientSkySource(
-        zenithColor: vm.Vector3(0.008, 0.03, 0.09),
-        horizonColor: vm.Vector3(0.05, 0.18, 0.32),
-        groundColor: vm.Vector3(0.003, 0.01, 0.03),
-        sunDirection: vm.Vector3(-0.35, -0.9, -0.28).normalized(),
-        sunColor: vm.Vector3(1.0, 0.94, 0.85),
-        sunSharpness: 420.0,
+        zenithColor: vm.Vector3(0.06, 0.24, 0.68),
+        horizonColor: vm.Vector3(0.38, 0.65, 0.92),
+        groundColor: vm.Vector3(0.015, 0.06, 0.14),
+        sunDirection: vm.Vector3(0.3, 0.6, 0.75).normalized(),
+        sunColor: vm.Vector3(1.3, 1.15, 0.95),
+        sunSharpness: 350.0,
       ),
+      intensity: 1.2,
     );
 
     // 5. Directional sun lighting with real-time shadow cascades
     _scene.directionalLight = DirectionalLight(
-      direction: vm.Vector3(-0.35, -0.9, -0.28).normalized(),
-      intensity: 3.8,
+      direction: vm.Vector3(-0.3, -0.6, -0.75).normalized(),
+      intensity: 1.0,
       castsShadow: true,
       color: vm.Vector3(1.0, 0.96, 0.90),
       shadowDepthBias: 0.015,
-      shadowNormalBias: 0.02,
+      shadowNormalBias: 0.0002,
     );
 
     // 6. Post-processing stack (ACES tone mapping, Screen Space Reflections, Bloom, GTAO)
@@ -126,7 +127,7 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
       ambientOcclusionIntensity: 1.1,
       ambientOcclusionHalfResolution: true,
       screenSpaceReflectionsEnabled: true,
-      screenSpaceReflectionsIntensity: 1.0,
+      screenSpaceReflectionsIntensity: 0.3,
       vignetteEnabled: true,
       vignetteIntensity: 0.32,
       vignetteRadius: 0.75,
@@ -161,10 +162,10 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
     _elapsedTime += clampedDt;
 
     // Update audio FFT data (bins 15-180)
-    _audio.updateFft();
+    _audio.updateFft(clampedDt);
 
-    // Deform 128x128 sea plane mesh
-    _seaPlane.update(_elapsedTime, _audio.fftData);
+    // Deform 256x256 sea plane mesh with 2D texture concentric waves
+    _seaPlane.update(_elapsedTime, _audio.fftData, _audio.texture2dData);
 
     // Animate piano keys spring action
     _piano.update(clampedDt);

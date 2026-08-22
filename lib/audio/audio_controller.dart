@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
@@ -22,10 +23,13 @@ class AudioController {
   final Set<int> _pressedKeys = {};
 
   // FFT buffer for visualization
-  final Float32List _fftBuffer = Float32List(
-    166,
-  ); // Bins 15 to 180 inclusive (166 bins)
+  final Float32List _fftBuffer = Float32List(166); // Bins 15 to 180 inclusive (166 bins)
   final Float32List _smoothedFft = Float32List(166);
+  Float32List _latest2dData = Float32List(0);
+  Float32List? _decayTexture;
+
+  // Fade multiplier that smoothly dissolves all circular texture history when notes stop
+  double _audioFade = 0.0;
 
   bool get isInitialized => _isInitialized;
   bool get isPreloaded => _isPreloaded;
@@ -35,6 +39,10 @@ class AudioController {
   SoundFontPlayer? get player => _player;
   List<Preset> get presets => _soundFont?.presets ?? [];
   Float32List get fftData => _smoothedFft;
+  Float32List get texture2dData => _latest2dData;
+  double get audioFade => _audioFade;
+  bool get hasActiveAudio =>
+      _activeVoices.isNotEmpty || _pressedKeys.isNotEmpty;
 
   /// Initializes SoLoud with the "Render-ahead ring" configuration and loads the SoundFont.
   Future<void> initialize({
@@ -64,7 +72,7 @@ class AudioController {
       _player!.sustainMultiplier = 0.01;
       _player!.sustainTime = 0.01;
 
-      // Initialize 2D texture audio data for FFT extraction
+      // Initialize 2D texture audio data for FFT extraction (256 rows x 512 cols)
       _audioData = AudioData(GetSamplesKind.texture);
 
       _statusMessage = 'Preloading SoundFont samples...';
@@ -96,6 +104,7 @@ class AudioController {
   }) async {
     if (_player == null || _soundFont == null) return;
     _pressedKeys.add(midiNote);
+    _audioFade = 1.0;
 
     final availablePresets = _soundFont!.presets;
     Preset? targetPreset;
@@ -144,16 +153,31 @@ class AudioController {
   }
 
   /// Updates audio FFT data every frame. Extracts the 15 to 180 frequency bin range.
-  void updateFft() {
+  void updateFft([double dt = 0.016]) {
     if (!_isInitialized || _audioData == null) return;
 
     try {
       _audioData!.updateSamples();
       final data = _audioData!.getAudioData();
 
+      // Check current live audio energy
+      double liveEnergy = 0.0;
       if (data.isNotEmpty) {
-        // Texture format gives rows of 512 floats (first 256 are FFT, second 256 are Wave)
-        // We take the current row's FFT bins from 15 to 180 (166 values)
+        for (var i = 15; i <= 180 && i < data.length; i++) {
+          liveEnergy += data[i];
+        }
+        liveEnergy /= 166.0;
+      }
+
+      // Track active audio fade envelope
+      if (_pressedKeys.isNotEmpty || _activeVoices.isNotEmpty || liveEnergy > 0.012) {
+        _audioFade = math.min(1.0, _audioFade + dt * 8.0);
+      } else {
+        // Fast decay to complete silence when keys released
+        _audioFade = math.max(0.0, _audioFade - dt * 3.5);
+      }
+
+      if (data.isNotEmpty && _audioFade > 0.001) {
         const startBin = 15;
         const endBin = 180;
         const count = endBin - startBin + 1; // 166
@@ -161,17 +185,29 @@ class AudioController {
         for (var i = 0; i < count; i++) {
           final binIndex = startBin + i;
           final rawVal = binIndex < data.length
-              ? data[binIndex].clamp(0.0, 1.0)
+              ? (data[binIndex] * _audioFade).clamp(0.0, 1.0)
               : 0.0;
           _fftBuffer[i] = rawVal;
-          // Exponential smoothing for fluid wave aesthetics
-          _smoothedFft[i] = _smoothedFft[i] * 0.65 + rawVal * 0.35;
+          // Exponential smoothing
+          _smoothedFft[i] = _smoothedFft[i] * 0.50 + rawVal * 0.50;
+          if (_smoothedFft[i] < 0.01) _smoothedFft[i] = 0.0;
         }
+
+        // Apply fade to texture data so history rows don't freeze on screen
+        if (_decayTexture == null || _decayTexture!.length != data.length) {
+          _decayTexture = Float32List(data.length);
+        }
+        for (var i = 0; i < data.length; i++) {
+          final val = data[i] * _audioFade;
+          _decayTexture![i] = val < 0.008 ? 0.0 : val;
+        }
+        _latest2dData = _decayTexture!;
       } else {
-        // Decay to zero when quiet
+        // Absolute silence: zero out buffers completely
         for (var i = 0; i < _smoothedFft.length; i++) {
-          _smoothedFft[i] *= 0.90;
+          _smoothedFft[i] = 0.0;
         }
+        _latest2dData = Float32List(0);
       }
     } catch (e) {
       // Audio stream may be pausing or resetting
