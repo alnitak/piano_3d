@@ -141,41 +141,41 @@ class PianoModel {
   PianoKeyInfo? getKeyForNode(Node node) => _nodeToKey[node];
 
   void _initMaterials() {
-    // High-gloss polished ivory white key material
+    // Soft satin ivory white key material (non-glare)
     _whiteKeyMaterial = PhysicallyBasedMaterial()
-      ..baseColorFactor = vm.Vector4(0.97, 0.97, 0.96, 1.0)
-      ..roughnessFactor = 0.06
-      ..metallicFactor = 0.02
-      ..clearcoat = 1.0
-      ..clearcoatRoughness = 0.04;
+      ..baseColorFactor = vm.Vector4(0.92, 0.92, 0.90, 1.0)
+      ..roughnessFactor = 0.45
+      ..metallicFactor = 0.0
+      ..specular = 0.45
+      ..clearcoat = 0.0;
 
-    // High-gloss ebony black key material
+    // Deep ebony black key material (true black, low reflection)
     _blackKeyMaterial = PhysicallyBasedMaterial()
-      ..baseColorFactor = vm.Vector4(0.04, 0.04, 0.04, 1.0)
-      ..roughnessFactor = 0.10
-      ..metallicFactor = 0.18
-      ..clearcoat = 1.0
-      ..clearcoatRoughness = 0.06;
+      ..baseColorFactor = vm.Vector4(0.004, 0.004, 0.004, 1.0)
+      ..roughnessFactor = 0.55
+      ..metallicFactor = 0.0
+      ..specular = 0.35
+      ..clearcoat = 0.0;
 
-    // Polished grand piano black lacquer body
+    // Deep satin black piano body casing (true black, low glare)
     _pianoCaseMaterial = PhysicallyBasedMaterial()
-      ..baseColorFactor = vm.Vector4(0.02, 0.02, 0.02, 1.0)
-      ..roughnessFactor = 0.08
-      ..metallicFactor = 0.35
-      ..clearcoat = 1.0
-      ..clearcoatRoughness = 0.05;
+      ..baseColorFactor = vm.Vector4(0.003, 0.003, 0.003, 1.0)
+      ..roughnessFactor = 0.60
+      ..metallicFactor = 0.0
+      ..specular = 0.30
+      ..clearcoat = 0.0;
 
-    // Polished gold brass trim
+    // Warm brushed brass/gold trim
     _goldTrimMaterial = PhysicallyBasedMaterial()
-      ..baseColorFactor = vm.Vector4(0.95, 0.80, 0.35, 1.0)
-      ..roughnessFactor = 0.15
-      ..metallicFactor = 0.92
-      ..clearcoat = 0.8;
+      ..baseColorFactor = vm.Vector4(0.90, 0.75, 0.30, 1.0)
+      ..roughnessFactor = 0.40
+      ..metallicFactor = 0.85
+      ..clearcoat = 0.0;
 
     // Red velvet damper felt strip
     _redFeltMaterial = PhysicallyBasedMaterial()
-      ..baseColorFactor = vm.Vector4(0.75, 0.05, 0.12, 1.0)
-      ..roughnessFactor = 0.92
+      ..baseColorFactor = vm.Vector4(0.70, 0.04, 0.10, 1.0)
+      ..roughnessFactor = 0.95
       ..metallicFactor = 0.0;
   }
 

@@ -213,10 +213,7 @@ class SeaPlane {
             rawFft = texture2dData[texIdx];
           }
         } else if (fftLen > 0) {
-          final fallbackBin = ((t * (fftLen - 1)).clamp(
-            0,
-            fftLen - 1,
-          )).toInt();
+          final fallbackBin = ((t * (fftLen - 1)).clamp(0, fftLen - 1)).toInt();
           rawFft = fftData[fallbackBin];
         }
 
@@ -233,9 +230,7 @@ class SeaPlane {
         final concentricCarrier = waveRing > 0.0
             ? math.sin(dist * 12.0 - time * 5.0) * (waveRing * 0.7)
             : 0.0;
-        final concentricPulse = waveRing > 0.0
-            ? waveRing * 1.5
-            : 0.0;
+        final concentricPulse = waveRing > 0.0 ? waveRing * 1.5 : 0.0;
 
         final fftDisplacement = concentricPulse + concentricCarrier;
 
@@ -258,8 +253,11 @@ class SeaPlane {
 
         // Dynamic vertex color shading: deep ocean sapphire in troughs, bright turquoise at expanding ripple crests
         final normalizedH = (height - origin.y + 0.25) / 1.4;
-        final peakEnergy = (normalizedH.clamp(0.0, 1.0) * 0.65 + waveRing * 0.55)
-            .clamp(0.0, 1.0);
+        final peakEnergy =
+            (normalizedH.clamp(0.0, 1.0) * 0.65 + waveRing * 0.55).clamp(
+              0.0,
+              1.0,
+            );
 
         final cIdx = vIdx * 4;
         _colors[cIdx] = 0.04 + peakEnergy * 0.28;

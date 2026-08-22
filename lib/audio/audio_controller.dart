@@ -61,7 +61,7 @@ class AudioController {
     SoLoud.instance.setMaxActiveVoiceCount(32);
     SoLoud.instance.setAudioDeviceIdleTimeout(null);
     SoLoud.instance.setVisualizationEnabled(true);
-    SoLoud.instance.setFftSmoothing(0.99);
+    // SoLoud.instance.setFftSmoothing(0.99);
 
     _statusMessage = 'Loading SoundFont: $soundFontAsset...';
 
