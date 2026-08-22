@@ -23,7 +23,9 @@ class AudioController {
   final Set<int> _pressedKeys = {};
 
   // FFT buffer for visualization
-  final Float32List _fftBuffer = Float32List(166); // Bins 15 to 180 inclusive (166 bins)
+  final Float32List _fftBuffer = Float32List(
+    166,
+  ); // Bins 15 to 180 inclusive (166 bins)
   final Float32List _smoothedFft = Float32List(166);
   Float32List _latest2dData = Float32List(0);
   Float32List? _decayTexture;
@@ -62,6 +64,7 @@ class AudioController {
     SoLoud.instance.setMaxActiveVoiceCount(32);
     SoLoud.instance.setAudioDeviceIdleTimeout(null);
     SoLoud.instance.setVisualizationEnabled(true);
+    SoLoud.instance.setFftSmoothing(0.9);
 
     _statusMessage = 'Loading SoundFont: $soundFontAsset...';
 
@@ -170,7 +173,9 @@ class AudioController {
       }
 
       // Track active audio fade envelope
-      if (_pressedKeys.isNotEmpty || _activeVoices.isNotEmpty || liveEnergy > 0.012) {
+      if (_pressedKeys.isNotEmpty ||
+          _activeVoices.isNotEmpty ||
+          liveEnergy > 0.012) {
         _audioFade = math.min(1.0, _audioFade + dt * 8.0);
       } else {
         // Fast decay to complete silence when keys released
