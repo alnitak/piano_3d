@@ -4,8 +4,9 @@ import 'dart:typed_data';
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
-/// High-detail 256x256 double-sided triangulated mesh plane reacting to 2D texture FFT audio data
-/// to produce concentric waves emanating from the center of the sea plane.
+/// High-detail 256x256 double-sided triangulated mesh plane reacting to 2D texture FFT audio data.
+/// Fresh incoming FFT values form a ring at 10% radius from sea center, expanding outwards
+/// over time to 100% of sea width while attenuating down to 0 like water droplet ripples.
 class SeaPlane {
   static const int cols = 256;
   static const int rows = 256;
@@ -135,9 +136,9 @@ class SeaPlane {
       ..raycastable = false;
   }
 
-  /// Updates mesh vertices, normals, and vertex colors based on elapsed time,
-  /// current FFT data, and 2D Texture Audio Data (history rows x 512 columns)
-  /// to produce concentric waves originating from the center of the sea plane.
+  /// Updates mesh vertices, normals, and vertex colors.
+  /// Incoming audio FFT values form a ring at 10% radius from the sea center.
+  /// Over time, the ring expands outward to 100% of sea width and decreases to 0.
   void update(double time, Float32List fftData, [Float32List? texture2dData]) {
     final dx = width / (cols - 1);
     final dz = depth / (rows - 1);
@@ -145,9 +146,11 @@ class SeaPlane {
     // Center of the sea plane
     final centerX = origin.x + width / 2.0;
     final centerZ = origin.z + depth / 2.0;
-    final maxRadius = math.sqrt(
-      (width / 2.0) * (width / 2.0) + (depth / 2.0) * (depth / 2.0),
-    );
+
+    // 100% radius is half the sea width (from center to edge)
+    final seaRadius = width / 2.0;
+    final rStart = 0.10 * seaRadius; // 10% of sea width / radius
+    final rEnd = seaRadius; // 100% of sea width
 
     final has2D = texture2dData != null && texture2dData.length >= 512;
     final fftLen = fftData.length;
@@ -163,50 +166,73 @@ class SeaPlane {
         final relX = x - centerX;
         final relZ = z - centerZ;
         final dist = math.sqrt(relX * relX + relZ * relZ);
-        final normRadius = (dist / maxRadius).clamp(0.0, 1.0);
 
-        // Angle [-pi, pi] normalized to [0, 1]
+        // Calculate radial expansion progress s in [0, 1] and height attenuation
+        double s = 0.0;
+        double attenuation = 0.0;
+        int texRow = 0;
+
+        if (dist < rStart) {
+          // Inside 10% inner radius: sample newest audio frame (row 0) with smooth center fade
+          s = 0.0;
+          final innerFade = rStart > 0 ? (dist / rStart).clamp(0.0, 1.0) : 1.0;
+          attenuation = innerFade;
+          texRow = 0;
+        } else if (dist <= rEnd) {
+          // Expanding zone (10% to 100%): map radial expansion to texture history rows
+          s = (dist - rStart) / (rEnd - rStart);
+          texRow = (s * 255.0).toInt().clamp(0, 255);
+          // Height values decrease smoothly to 0 as circle reaches 100%
+          attenuation = (1.0 - s);
+        } else {
+          // Beyond 100% of sea width: completely 0 height
+          s = 1.0;
+          attenuation = 0.0;
+          texRow = 255;
+        }
+
+        // Angle around center [-pi, pi] mapped to [0, 1]
         final angle = math.atan2(-relZ, relX);
         final normAngle = (angle + math.pi) / (2.0 * math.pi);
 
         // Frequency bin in the 15..180 range
         final bin = (15 + (normAngle * 165.0).toInt()).clamp(15, 180);
 
-        double fftVal = 0.0;
+        double rawFft = 0.0;
 
         if (has2D) {
-          // 2D texture has 256 rows (time history: 0 is newest/center, 255 is oldest/edges)
-          // and 512 columns (0..255 are FFT frequency bins, 256..511 are waveform)
-          final texRow = (normRadius * 255.0).toInt().clamp(0, 255);
           final texIdx = texRow * 512 + bin;
           if (texIdx < texture2dData.length) {
-            fftVal = texture2dData[texIdx];
+            rawFft = texture2dData[texIdx];
           }
         } else if (fftLen > 0) {
           final fallbackBin = ((normAngle * (fftLen - 1)).clamp(
             0,
             fftLen - 1,
           )).toInt();
-          fftVal = fftData[fallbackBin];
+          rawFft = fftData[fallbackBin];
         }
 
-        // Strict noise gate: if below noise threshold, drop strictly to 0.0
-        if (fftVal < 0.02) {
-          fftVal = 0.0;
-        } else {
-          // Smoothly scale above the threshold
-          fftVal = ((fftVal - 0.02) / 0.98 * (1.0 / 3.0)).clamp(0.0, 1.0);
+        // Strict noise gate
+        double fftVal = 0.0;
+        if (rawFft >= 0.02) {
+          fftVal = ((rawFft - 0.02) / 0.98 * 0.33).clamp(0.0, 1.0);
         }
 
-        // Concentric waves: exactly 0 when fftVal == 0
-        final concentricCarrier = fftVal > 0.0
-            ? math.sin(dist * 12.0 - time * 5.0) * (fftVal * 0.7)
+        // Attenuated FFT wave ring height (starts at 10%, expands to 100%, drops to 0)
+        final waveRing = fftVal * attenuation;
+
+        // Concentric droplet ripples radiating outward
+        final concentricCarrier = waveRing > 0.0
+            ? math.sin(dist * 12.0 - time * 5.0) * (waveRing * 0.7)
             : 0.0;
-        final concentricPulse = fftVal > 0.0
-            ? fftVal * 1.3 * (1.0 - normRadius * 0.45)
+        final concentricPulse = waveRing > 0.0
+            ? waveRing * 1.5
             : 0.0;
 
-        // Ambient ocean wave movement: gentle natural living sea
+        final fftDisplacement = concentricPulse + concentricCarrier;
+
+        // Ambient natural ocean wave movement
         final ambient1 = math.sin(x * 0.45 + time * 1.6 + z * 0.2) * 0.18;
         final ambient2 = math.cos(z * 0.60 - time * 1.3 + x * 0.3) * 0.12;
         final ambient3 = math.sin((x * 0.8 + z * 0.8) + time * 2.2) * 0.06;
@@ -218,15 +244,14 @@ class SeaPlane {
             ambient2 +
             ambient3 +
             microRipple +
-            concentricPulse +
-            concentricCarrier;
+            fftDisplacement;
 
         final pIdx = vIdx * 3;
         _positions[pIdx + 1] = height;
 
-        // Dynamic vertex color shading: deep ocean sapphire in troughs, bright turquoise when FFT active
+        // Dynamic vertex color shading: deep ocean sapphire in troughs, bright turquoise at expanding ripple crests
         final normalizedH = (height - origin.y + 0.25) / 1.4;
-        final peakEnergy = (normalizedH.clamp(0.0, 1.0) * 0.65 + fftVal * 0.55)
+        final peakEnergy = (normalizedH.clamp(0.0, 1.0) * 0.65 + waveRing * 0.55)
             .clamp(0.0, 1.0);
 
         final cIdx = vIdx * 4;
