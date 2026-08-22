@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
+
 import 'package:flutter_scene/scene.dart';
 import 'package:vector_math/vector_math.dart' as vm;
 
@@ -26,11 +27,8 @@ class SeaPlane {
   // Persistent wave state
   final Float32List _fftPeakHistory = Float32List(rows);
 
-  SeaPlane({
-    this.width = 28.0,
-    this.depth = 26.0,
-    vm.Vector3? origin,
-  }) : origin = origin ?? vm.Vector3(-14.0, -0.2, -1.0) {
+  SeaPlane({this.width = 32.0, this.depth = 28.0, vm.Vector3? origin})
+    : origin = origin ?? vm.Vector3(-16.0, -0.28, 1.20) {
     _initBuffers();
     _buildMesh();
   }
@@ -44,7 +42,7 @@ class SeaPlane {
     final triangleCount = (cols - 1) * (rows - 1) * 2;
     _indices = Uint16List(triangleCount * 3);
 
-    // Initial base grid setup
+    // Initial base grid setup extending along +Z into background
     final dx = width / (cols - 1);
     final dz = depth / (rows - 1);
 
@@ -52,7 +50,7 @@ class SeaPlane {
     var tIdx = 0;
 
     for (var r = 0; r < rows; r++) {
-      final z = origin.z - (r * dz);
+      final z = origin.z + (r * dz);
       final v = r / (rows - 1);
 
       for (var c = 0; c < cols; c++) {
@@ -82,7 +80,7 @@ class SeaPlane {
       }
     }
 
-    // Two triangles per quad (front face winding +Y)
+    // Two triangles per quad (wound so face points +Y up)
     var iIdx = 0;
     for (var r = 0; r < rows - 1; r++) {
       for (var c = 0; c < cols - 1; c++) {
@@ -115,13 +113,14 @@ class SeaPlane {
     // Procedural ocean water material with high specularity and reflections
     _material = PhysicallyBasedMaterial()
       ..baseColorFactor = vm.Vector4(0.04, 0.25, 0.45, 0.95)
-      ..roughnessFactor = 0.12
+      ..roughnessFactor = 0.10
       ..metallicFactor = 0.15
       ..clearcoat = 1.0
-      ..clearcoatRoughness = 0.08
+      ..clearcoatRoughness = 0.06
       ..vertexColorWeight = 1.0;
 
-    node = Node(name: 'SeaPlane', mesh: Mesh(_geometry, _material));
+    node = Node(name: 'SeaPlane', mesh: Mesh(_geometry, _material))
+      ..raycastable = false;
   }
 
   /// Updates mesh vertices, normals, and vertex colors based on elapsed time and FFT data.
@@ -163,7 +162,7 @@ class SeaPlane {
 
         // Procedural ocean waves
         final x = origin.x + (c * dx);
-        final z = origin.z - (r * dz);
+        final z = origin.z + (r * dz);
 
         final wave1 = math.sin(x * 0.45 + time * 1.8 + z * 0.2) * 0.22;
         final wave2 = math.cos(z * 0.65 - time * 1.4 + x * 0.3) * 0.15;
@@ -171,19 +170,31 @@ class SeaPlane {
         final microRipple = math.sin(x * 2.5 + z * 2.5 + time * 4.0) * 0.03;
 
         // FFT pulse and directional ripples radiating outwards from the piano
-        final distFromPiano = math.sqrt(xNorm * xNorm + (zNorm * 1.5) * (zNorm * 1.5));
-        final fftRipple = math.sin(distFromPiano * 14.0 - time * 6.0) * (fftVal * 0.8);
+        final distFromPiano = math.sqrt(
+          xNorm * xNorm + (zNorm * 1.5) * (zNorm * 1.5),
+        );
+        final fftRipple =
+            math.sin(distFromPiano * 14.0 - time * 6.0) * (fftVal * 0.8);
         final fftRowWave = rowHistory * math.cos(x * 0.5 + time * 2.0) * 0.6;
         final fftColumnLift = fftVal * 1.4 * (1.0 - zNorm * 0.5);
 
-        final height = origin.y + wave1 + wave2 + wave3 + microRipple + fftColumnLift + fftRipple + fftRowWave;
+        final height =
+            origin.y +
+            wave1 +
+            wave2 +
+            wave3 +
+            microRipple +
+            fftColumnLift +
+            fftRipple +
+            fftRowWave;
 
         final pIdx = vIdx * 3;
         _positions[pIdx + 1] = height;
 
         // Dynamic vertex color shading: deep ocean blue in troughs, luminous turquoise on crests, white foam at peaks
         final normalizedH = (height - origin.y + 0.3) / 1.5;
-        final peakEnergy = (normalizedH.clamp(0.0, 1.0) * 0.7 + fftVal * 0.5).clamp(0.0, 1.0);
+        final peakEnergy = (normalizedH.clamp(0.0, 1.0) * 0.7 + fftVal * 0.5)
+            .clamp(0.0, 1.0);
 
         final cIdx = vIdx * 4;
         // Interpolate between deep sapphire (0.02, 0.08, 0.22) and bright cyan-foam (0.2, 0.9, 0.95)
@@ -202,7 +213,6 @@ class SeaPlane {
         final idx = r * cols + c;
         final pIdx = idx * 3;
 
-        // Central difference for fast, smooth analytical grid normals
         final cPrev = (c - 1).clamp(0, cols - 1);
         final cNext = (c + 1).clamp(0, cols - 1);
         final rPrev = (r - 1).clamp(0, rows - 1);

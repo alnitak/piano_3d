@@ -1,4 +1,5 @@
 import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_soloud/flutter_soloud.dart';
 import 'package:soundfont_kit/soundfont_kit.dart';
@@ -21,7 +22,9 @@ class AudioController {
   final Set<int> _pressedKeys = {};
 
   // FFT buffer for visualization
-  final Float32List _fftBuffer = Float32List(166); // Bins 15 to 180 inclusive (166 bins)
+  final Float32List _fftBuffer = Float32List(
+    166,
+  ); // Bins 15 to 180 inclusive (166 bins)
   final Float32List _smoothedFft = Float32List(166);
 
   bool get isInitialized => _isInitialized;
@@ -58,9 +61,8 @@ class AudioController {
       _soundFont = await SoundFontFile.fromAsset(soundFontAsset);
       _player = _soundFont!.createPlayer();
 
-      // Set sustain multiplier (sustain X) to 0.1 as specified in user request
-      _player!.sustainMultiplier = 0.1;
-      _player!.sustainTime = 0.1;
+      _player!.sustainMultiplier = 0.01;
+      _player!.sustainTime = 0.01;
 
       // Initialize 2D texture audio data for FFT extraction
       _audioData = AudioData(GetSamplesKind.texture);
@@ -100,7 +102,8 @@ class AudioController {
 
     if (availablePresets.isNotEmpty) {
       final index = customPresetIndex ?? (keyIndex % availablePresets.length);
-      targetPreset = availablePresets[index.clamp(0, availablePresets.length - 1)];
+      targetPreset =
+          availablePresets[index.clamp(0, availablePresets.length - 1)];
     }
 
     try {
@@ -157,7 +160,9 @@ class AudioController {
 
         for (var i = 0; i < count; i++) {
           final binIndex = startBin + i;
-          final rawVal = binIndex < data.length ? data[binIndex].clamp(0.0, 1.0) : 0.0;
+          final rawVal = binIndex < data.length
+              ? data[binIndex].clamp(0.0, 1.0)
+              : 0.0;
           _fftBuffer[i] = rawVal;
           // Exponential smoothing for fluid wave aesthetics
           _smoothedFft[i] = _smoothedFft[i] * 0.65 + rawVal * 0.35;

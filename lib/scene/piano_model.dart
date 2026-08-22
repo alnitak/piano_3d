@@ -9,8 +9,8 @@ class PianoKeyInfo {
   final String noteName; // e.g. "C3", "C#3"
   final bool isBlack;
   final double xPos;
-  final double zPos;
   final double yPos;
+  final double zPos;
   final double width;
   final double length;
   final double height;
@@ -28,28 +28,97 @@ class PianoKeyInfo {
     required this.noteName,
     required this.isBlack,
     required this.xPos,
-    required this.zPos,
     required this.yPos,
+    required this.zPos,
     required this.width,
     required this.length,
     required this.height,
   });
+
+  /// Checks if a 3D ray intersects this key's bounding box. Returns distance t or null.
+  double? intersectRay(vm.Vector3 rayOrigin, vm.Vector3 rayDir) {
+    final halfW = width / 2.0 + 0.015; // hit tolerance padding
+    final halfH = height / 2.0 + 0.03;
+    final halfL = length / 2.0 + 0.015;
+
+    final minX = xPos - halfW;
+    final maxX = xPos + halfW;
+    final minY = yPos - halfH;
+    final maxY = yPos + halfH;
+    final minZ = zPos - halfL;
+    final maxZ = zPos + halfL;
+
+    double tMin = -double.infinity;
+    double tMax = double.infinity;
+
+    // X axis slab
+    if (rayDir.x.abs() > 1e-7) {
+      var t1 = (minX - rayOrigin.x) / rayDir.x;
+      var t2 = (maxX - rayOrigin.x) / rayDir.x;
+      if (t1 > t2) {
+        final tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tMin = math.max(tMin, t1);
+      tMax = math.min(tMax, t2);
+      if (tMin > tMax) return null;
+    } else if (rayOrigin.x < minX || rayOrigin.x > maxX) {
+      return null;
+    }
+
+    // Y axis slab
+    if (rayDir.y.abs() > 1e-7) {
+      var t1 = (minY - rayOrigin.y) / rayDir.y;
+      var t2 = (maxY - rayOrigin.y) / rayDir.y;
+      if (t1 > t2) {
+        final tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tMin = math.max(tMin, t1);
+      tMax = math.min(tMax, t2);
+      if (tMin > tMax) return null;
+    } else if (rayOrigin.y < minY || rayOrigin.y > maxY) {
+      return null;
+    }
+
+    // Z axis slab
+    if (rayDir.z.abs() > 1e-7) {
+      var t1 = (minZ - rayOrigin.z) / rayDir.z;
+      var t2 = (maxZ - rayOrigin.z) / rayDir.z;
+      if (t1 > t2) {
+        final tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+      }
+      tMin = math.max(tMin, t1);
+      tMax = math.min(tMax, t2);
+      if (tMin > tMax) return null;
+    } else if (rayOrigin.z < minZ || rayOrigin.z > maxZ) {
+      return null;
+    }
+
+    if (tMax < 0) return null;
+    return tMin > 0 ? tMin : tMax;
+  }
 }
 
 /// 3D Model of a 2-octave piano keyboard with polished materials, specularity, and interactive keys.
 class PianoModel {
   final Node rootNode = Node(name: 'PianoRoot');
   final List<PianoKeyInfo> keys = [];
+  final Map<Node, PianoKeyInfo> _nodeToKey = {};
 
   // Key dimensions
   static const double whiteKeyWidth = 0.22;
-  static const double whiteKeyLength = 1.15;
-  static const double whiteKeyHeight = 0.12;
-  static const double whiteKeyGap = 0.01;
+  static const double whiteKeyLength = 1.12;
+  static const double whiteKeyHeight = 0.13;
+  static const double whiteKeyGap = 0.008;
 
   static const double blackKeyWidth = 0.12;
-  static const double blackKeyLength = 0.70;
-  static const double blackKeyHeight = 0.14;
+  static const double blackKeyLength = 0.68;
+  static const double blackKeyHeight = 0.15;
 
   static const int startMidi = 48; // C3
   static const int totalKeys = 25; // C3 to C5 (2 octaves)
@@ -64,6 +133,8 @@ class PianoModel {
     _initMaterials();
     _buildPiano();
   }
+
+  PianoKeyInfo? getKeyForNode(Node node) => _nodeToKey[node];
 
   void _initMaterials() {
     // High-gloss polished ivory white key material
@@ -138,7 +209,7 @@ class PianoModel {
       if (!isBlack) {
         x = currentWhiteX;
         y = 0.0;
-        z = 0.0;
+        z = 0.40; // centered in Z
         w = whiteKeyWidth;
         l = whiteKeyLength;
         h = whiteKeyHeight;
@@ -147,10 +218,10 @@ class PianoModel {
         lastWhiteX = currentWhiteX;
         currentWhiteX += whiteKeyWidth + whiteKeyGap;
       } else {
-        // Position black key offset between neighboring white keys
+        // Position black key offset between neighboring white keys, elevated and pushed towards back (+Z)
         x = lastWhiteX + (whiteKeyWidth + whiteKeyGap) / 2.0;
-        y = 0.04;
-        z = -0.22;
+        y = 0.045;
+        z = 0.62;
         w = blackKeyWidth;
         l = blackKeyLength;
         h = blackKeyHeight;
@@ -172,11 +243,13 @@ class PianoModel {
 
       final keyNode = Node(name: 'Key_$name', mesh: mesh);
       keyNode.position = vm.Vector3(x, y, z);
+      keyNode.raycastable = true;
       keyInfo.node = keyNode;
       keyInfo.restPosition = vm.Vector3(x, y, z);
       keyInfo.restRotation = vm.Quaternion.identity();
 
       keys.add(keyInfo);
+      _nodeToKey[keyNode] = keyInfo;
       rootNode.add(keyNode);
     }
 
@@ -185,13 +258,16 @@ class PianoModel {
 
   void _buildPianoCasing(double keyboardWidth) {
     final casingWidth = keyboardWidth + 0.45;
+    const centerZ = 0.40;
 
     // Key bed bottom foundation
     final bedGeo = CuboidGeometry(vm.Vector3(casingWidth, 0.16, whiteKeyLength + 0.35));
     final bedNode = Node(
       name: 'PianoBed',
       mesh: Mesh(bedGeo, _pianoCaseMaterial),
-    )..position = vm.Vector3(0.0, -0.12, -0.05);
+    )
+      ..position = vm.Vector3(0.0, -0.12, centerZ + 0.05)
+      ..raycastable = false;
     rootNode.add(bedNode);
 
     // Left cheek block
@@ -199,22 +275,28 @@ class PianoModel {
     final leftCheek = Node(
       name: 'LeftCheek',
       mesh: Mesh(cheekGeo, _pianoCaseMaterial),
-    )..position = vm.Vector3(-keyboardWidth / 2.0 - 0.11, 0.02, -0.05);
+    )
+      ..position = vm.Vector3(-keyboardWidth / 2.0 - 0.11, 0.02, centerZ + 0.05)
+      ..raycastable = false;
     rootNode.add(leftCheek);
 
     // Right cheek block
     final rightCheek = Node(
       name: 'RightCheek',
       mesh: Mesh(cheekGeo, _pianoCaseMaterial),
-    )..position = vm.Vector3(keyboardWidth / 2.0 + 0.11, 0.02, -0.05);
+    )
+      ..position = vm.Vector3(keyboardWidth / 2.0 + 0.11, 0.02, centerZ + 0.05)
+      ..raycastable = false;
     rootNode.add(rightCheek);
 
-    // Rear fallboard / back rest
+    // Rear fallboard / back rest (at the back of keys, +Z)
     final fallboardGeo = CuboidGeometry(vm.Vector3(keyboardWidth + 0.05, 0.45, 0.15));
     final fallboard = Node(
       name: 'Fallboard',
       mesh: Mesh(fallboardGeo, _pianoCaseMaterial),
-    )..position = vm.Vector3(0.0, 0.18, -whiteKeyLength / 2.0 - 0.08);
+    )
+      ..position = vm.Vector3(0.0, 0.18, centerZ + whiteKeyLength / 2.0 + 0.08)
+      ..raycastable = false;
     rootNode.add(fallboard);
 
     // Red velvet felt strip along the fallboard
@@ -222,7 +304,9 @@ class PianoModel {
     final felt = Node(
       name: 'RedFelt',
       mesh: Mesh(feltGeo, _redFeltMaterial),
-    )..position = vm.Vector3(0.0, 0.08, -whiteKeyLength / 2.0 - 0.01);
+    )
+      ..position = vm.Vector3(0.0, 0.08, centerZ + whiteKeyLength / 2.0 + 0.01)
+      ..raycastable = false;
     rootNode.add(felt);
 
     // Gold brass accent lip
@@ -230,7 +314,9 @@ class PianoModel {
     final goldLip = Node(
       name: 'GoldAccent',
       mesh: Mesh(goldLipGeo, _goldTrimMaterial),
-    )..position = vm.Vector3(0.0, 0.38, -whiteKeyLength / 2.0 - 0.01);
+    )
+      ..position = vm.Vector3(0.0, 0.38, centerZ + whiteKeyLength / 2.0 + 0.01)
+      ..raycastable = false;
     rootNode.add(goldLip);
   }
 
@@ -249,10 +335,10 @@ class PianoModel {
     for (final key in keys) {
       final target = key.isPressed ? 1.0 : 0.0;
       // Spring lerp towards target
-      key.currentDepression += (target - key.currentDepression) * math.min(1.0, dt * 25.0);
+      key.currentDepression += (target - key.currentDepression) * math.min(1.0, dt * 28.0);
 
       // Key depression action: dip front down by rotating around rear edge and translating down
-      final dipAngle = -key.currentDepression * 0.055; // radians
+      final dipAngle = -key.currentDepression * 0.050; // radians
       final dipY = -key.currentDepression * 0.035;
 
       final rot = vm.Quaternion.axisAngle(vm.Vector3(1, 0, 0), dipAngle);
@@ -265,34 +351,33 @@ class PianoModel {
     }
   }
 
-  /// Finds the key clicked given normalized coordinates or world-space ray.
-  PianoKeyInfo? findKeyAtPosition(double worldX, double worldZ) {
-    // Check black keys first (they sit on top)
+  /// Finds the key clicked given a world-space ray. Black keys are checked first.
+  PianoKeyInfo? findKeyHitByRay(vm.Vector3 rayOrigin, vm.Vector3 rayDir) {
+    PianoKeyInfo? closestKey;
+    double closestT = double.infinity;
+
+    // Check black keys first (they sit above and closer to user's finger on upper section)
     for (final key in keys) {
       if (!key.isBlack) continue;
-      final halfW = key.width / 2.0;
-      final halfL = key.length / 2.0;
-      if (worldX >= key.xPos - halfW &&
-          worldX <= key.xPos + halfW &&
-          worldZ >= key.zPos - halfL &&
-          worldZ <= key.zPos + halfL) {
-        return key;
+      final t = key.intersectRay(rayOrigin, rayDir);
+      if (t != null && t < closestT) {
+        closestT = t;
+        closestKey = key;
       }
     }
+
+    if (closestKey != null) return closestKey;
 
     // Check white keys
     for (final key in keys) {
       if (key.isBlack) continue;
-      final halfW = key.width / 2.0;
-      final halfL = key.length / 2.0;
-      if (worldX >= key.xPos - halfW &&
-          worldX <= key.xPos + halfW &&
-          worldZ >= key.zPos - halfL &&
-          worldZ <= key.zPos + halfL) {
-        return key;
+      final t = key.intersectRay(rayOrigin, rayDir);
+      if (t != null && t < closestT) {
+        closestT = t;
+        closestKey = key;
       }
     }
 
-    return null;
+    return closestKey;
   }
 }

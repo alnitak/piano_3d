@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_scene/scene.dart';
@@ -59,16 +60,16 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
 
   // Selected preset for soundfont playback
   int _selectedPresetIndex = 0;
-  double _sustainMultiplier = 0.1;
+  double _sustainMultiplier = 0.01;
 
   @override
   void initState() {
     super.initState();
     _cameraController = CameraOrbitController(
-      target: vm.Vector3(0.0, 0.20, -0.15),
+      target: vm.Vector3(0.0, 0.15, 0.45),
       yaw: 0.0,
-      pitch: 0.42,
-      distance: 3.8,
+      pitch: 0.48,
+      distance: 3.6,
     );
 
     _initSceneAndAudio();
@@ -240,20 +241,20 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
     }
   }
 
-  /// Casts a ray from screen space to the piano keys on the XZ plane.
+  /// Casts a ray from screen space to the piano keys using engine raycast and analytical Ray-Box testing.
   PianoKeyInfo? _raycastPianoKey(Offset screenPos, Size viewportSize) {
-    final ray = _cameraController.screenPointToRay(
-      screenPos.dx,
-      screenPos.dy,
-      viewportSize.width,
-      viewportSize.height,
-    );
+    final camera = _cameraController.getCamera();
+    final ray = camera.screenPointToRay(screenPos, viewportSize);
 
-    // Piano keybed top sits at Y = 0.05
-    final hit = ray.intersectPlaneY(0.05);
-    if (hit == null) return null;
+    // 1. Engine scene raycast
+    final hit = _scene.raycast(ray);
+    if (hit != null) {
+      final key = _piano.getKeyForNode(hit.node);
+      if (key != null) return key;
+    }
 
-    return _piano.findKeyAtPosition(hit.x, hit.z);
+    // 2. Analytical 3D Ray-Box intersection fallback
+    return _piano.findKeyHitByRay(ray.origin, ray.direction);
   }
 
   @override
@@ -269,7 +270,10 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
               const SizedBox(height: 20),
               Text(
                 'Loading 3D Piano & Shaders...',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 16),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.8),
+                  fontSize: 16,
+                ),
               ),
             ],
           ),
@@ -281,7 +285,10 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
       backgroundColor: const Color(0xFF050811),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final viewportSize = Size(constraints.maxWidth, constraints.maxHeight);
+          final viewportSize = Size(
+            constraints.maxWidth,
+            constraints.maxHeight,
+          );
 
           return Stack(
             children: [
@@ -304,12 +311,7 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
               ),
 
               // 2. Top Header HUD with preset controls & audio status
-              Positioned(
-                top: 24,
-                left: 24,
-                right: 24,
-                child: _buildTopHud(),
-              ),
+              Positioned(top: 24, left: 24, right: 24, child: _buildTopHud()),
 
               // 3. Bottom Controls & FFT Visualizer Bar
               Positioned(
@@ -354,7 +356,11 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
                   color: const Color(0xFF00D2FF).withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.piano, color: Color(0xFF00D2FF), size: 22),
+                child: const Icon(
+                  Icons.piano,
+                  color: Color(0xFF00D2FF),
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 14),
               Column(
@@ -384,24 +390,35 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
               // Preset Selector Dropdown
               if (_audio.presets.isNotEmpty) ...[
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.35),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.1),
+                    ),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<int>(
                       value: _selectedPresetIndex,
                       dropdownColor: const Color(0xFF1E293B),
-                      icon: const Icon(Icons.keyboard_arrow_down, color: Color(0xFF00D2FF)),
+                      icon: const Icon(
+                        Icons.keyboard_arrow_down,
+                        color: Color(0xFF00D2FF),
+                      ),
                       items: List.generate(_audio.presets.length, (i) {
                         final p = _audio.presets[i];
                         return DropdownMenuItem<int>(
                           value: i,
                           child: Text(
                             'Preset ${p.program}: ${p.name}',
-                            style: const TextStyle(fontSize: 13, color: Colors.white),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: Colors.white,
+                            ),
                           ),
                         );
                       }),
@@ -425,7 +442,11 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
                 onPressed: () {
                   setState(() => _cameraController.reset());
                 },
-                icon: const Icon(Icons.center_focus_strong, color: Colors.white, size: 18),
+                icon: const Icon(
+                  Icons.center_focus_strong,
+                  color: Colors.white,
+                  size: 18,
+                ),
               ),
             ],
           ),
@@ -478,7 +499,9 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
                     child: SliderTheme(
                       data: SliderTheme.of(context).copyWith(
                         trackHeight: 3,
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 6,
+                        ),
                       ),
                       child: Slider(
                         value: _sustainMultiplier,
@@ -501,7 +524,10 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
 
               // Piano Keys hint
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
@@ -509,7 +535,11 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.touch_app, size: 14, color: Color(0xFF00D2FF)),
+                    const Icon(
+                      Icons.touch_app,
+                      size: 14,
+                      color: Color(0xFF00D2FF),
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       'Drag keys to play • Drag sea to orbit',
@@ -538,7 +568,9 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
           decoration: BoxDecoration(
             color: const Color(0xFF0F172A).withValues(alpha: 0.8),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFF00D2FF).withValues(alpha: 0.3)),
+            border: Border.all(
+              color: const Color(0xFF00D2FF).withValues(alpha: 0.3),
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
