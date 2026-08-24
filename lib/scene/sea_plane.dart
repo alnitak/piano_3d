@@ -230,7 +230,7 @@ class SeaPlane {
         final concentricCarrier = waveRing > 0.0
             ? math.sin(dist * 12.0 - time * 5.0) * (waveRing * 0.7)
             : 0.0;
-        final concentricPulse = waveRing > 0.0 ? waveRing * 1.5 : 0.0;
+        final concentricPulse = waveRing > 0.0 ? waveRing * 5 : 0.0;
 
         final fftDisplacement = concentricPulse + concentricCarrier;
 
