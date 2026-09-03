@@ -41,6 +41,20 @@ Blooms bright pixels. Off by default. The cheapest way to make a scene feel lit 
 | `bloomIntensity` | `0.15` | Strength of the added glow. |
 | `bloomScatter` | `0.7` | Spread of the glow, wider values feel dreamier. |
 
+### Lens flares (`lensFlare*`)
+
+Ghost chains and a halo ring off the bloom pyramid, for bright emissive sources and sun disks. Rides the bloom chain, so `bloomEnabled` must be on and the flare scales with `bloomIntensity`. Off by default. A little goes a long way; a strong source with high intensity/halo washes the frame.
+
+| Field | Default | What it does |
+| --- | --- | --- |
+| `lensFlareEnabled` | `false` | Turn flares on. Needs `bloomEnabled`. |
+| `lensFlareIntensity` | `1.0` | Strength of the flare features relative to the bloom. |
+| `lensFlareGhostCount` | `4` | Internal-reflection ghosts along the line through the screen center (clamped to 8 at render). |
+| `lensFlareGhostSpacing` | `0.3` | Spacing between ghosts, as a fraction of the distance to the center. |
+| `lensFlareHaloRadius` | `0.35` | Halo ring radius in screen UV units. |
+| `lensFlareHaloIntensity` | `1.0` | Halo strength relative to the ghosts. `0` disables the halo. The halo is what washes the whole frame, so tame it first. |
+| `lensFlareChromaticAberration` | `0.005` | Radial color dispersion of the flare features. |
+
 ## Color grading (`colorGrading*`)
 
 Post-tone-map color shaping. Off by default. Reach here to change the *mood* of the color rather than the exposure.
@@ -101,7 +115,7 @@ Screen-space contact darkening. Off by default. Requires a `PerspectiveCamera`. 
 | `ambientOcclusionBentNormals` | `false` | Compute bent normals (needs `groundTruth`); improves indirect lighting direction and enables `bentCone` specular AO. |
 | `ambientOcclusionSpecularMode` | `SpecularAmbientOcclusionMode.none` | `simple` occludes reflections cheaply; `bentCone` is directional and needs bent normals. |
 | `ambientOcclusionHalfResolution` | `true` | Compute at half res. Keep on unless AO edges look too coarse. |
-| `ambientOcclusionIndirectLight` | `0.0` | Above 0 turns on screen-space global illumination (SSGI) bounce; expensive. |
+| `ambientOcclusionIndirectLight` | `0.0` | Above 0 turns on screen-space global illumination (SSGI) bounce; expensive. Its radiance history reprojects, so the bounce stays put under camera motion (object motion still lags). |
 | `ambientOcclusionMultiBounce` | `0.0` | Approximate multi-bounce darkening recovery. |
 | `ambientOcclusionSampleCount` | `16` | Samples for the `obscurance` method. |
 | `ambientOcclusionSliceCount` / `ambientOcclusionStepsPerSlice` | `3` / `3` | GTAO slice sampling. |
@@ -179,13 +193,83 @@ Physically parameterized lens blur. Off by default. Requires a `PerspectiveCamer
 
 ---
 
+## Not on `EnvironmentSettings`
+
+Two look-affecting settings live outside the `EnvironmentSettings` snapshot: anti-aliasing is a `Scene` field, and reflection probes are a scene-graph component. Set them directly.
+
+### Anti-aliasing (`Scene.antiAliasingMode`)
+
+Edge anti-aliasing. `AntiAliasingMode.auto` is the default: it picks `msaa` where the backend supports it and `fxaa` otherwise. Set it directly, not through `EnvironmentSettings`.
+
+```dart
+scene.antiAliasingMode = AntiAliasingMode.smaa;
+```
+
+| Mode | What it does |
+| --- | --- |
+| `none` | No anti-aliasing; native-resolution edges. |
+| `msaa` | 4x MSAA on the scene pass, the best geometry-edge quality and cheap on mobile GPUs, but not supported on every Flutter GPU backend (falls back to `fxaa`). Check `Scene.isAntiAliasingModeSupported` and read `Scene.effectiveAntiAliasingMode`. |
+| `fxaa` | One post pass over the tone-mapped image, supported everywhere, but softens all high-contrast edges including texture detail. |
+| `smaa` | SMAA 1x, three post passes, supported everywhere. Reconstructs edge shapes so edges are cleaner than `fxaa` with far less texture blurring, at roughly 3x the `fxaa` cost. Reach for it when `fxaa` looks mushy and `msaa` is unavailable. |
+| `auto` | `msaa` where supported, else `fxaa`. |
+
+### Reflection probes (`ReflectionProbeComponent`)
+
+SSR only reflects what is currently on screen. A reflection probe captures the surroundings from a point into a local, parallax-corrected environment, so off-screen geometry reflects correctly inside a bounded box (a mirror ball, a glossy floor in a room). It is a `Component` attached to a `Node`, not an `EnvironmentSettings` field.
+
+```dart
+final probe = Node()
+  ..localTransform = vm.Matrix4.translation(vm.Vector3(0, 1, 0)); // reflective spot
+probe.addComponent(ReflectionProbeComponent(
+  extents: vm.Vector3(4, 3, 4),   // box half-extents (the influence + parallax volume)
+));
+scene.add(probe);
+```
+
+| Constructor arg | Default | What it does |
+| --- | --- | --- |
+| `extents` | `Vector3.all(5.0)` | Half-extents of the world-axis-aligned box that is both the influence volume and the parallax proxy. |
+| `blendDistance` | `1.0` | Distance over which the probe cross-fades with the environment at the box edge. |
+| `priority` | `10.0` | Which probe wins where several overlap. |
+| `weight` | `1.0` | Contribution scale in the blend. |
+| `faceResolution` | `128` | Cubemap face resolution of the capture. |
+| `captureOnActivate` | `true` | Capture once when the probe joins the scene. Call `requestCapture()` to re-capture after the scene changes; the capture is a static snapshot otherwise. |
+
+For a one-shot environment capture with no node or parallax (e.g. to hand a captured `EnvironmentMap` to another material), `Scene.captureEnvironment(position: ...)` returns an `EnvironmentMap` directly.
+
+### Planar reflectors (`PlanarReflectorComponent`)
+
+A true mirror for one flat surface, re-rendered every frame the surface is visible: the engine renders the scene from the view camera reflected across the surface's plane (near plane clamped to the mirror, so nothing behind it leaks in) and hands the capture to the surface's material. Use it for mirrors and glossy floors where SSR's on-screen-only reflections or a probe's static capture are not enough.
+
+Two pieces pair up. The component goes on the mirror node (the plane is the node's local `+Y` through its transform, or an explicit `localNormal`):
+
+```dart
+final mirror = Node(mesh: Mesh(PlaneGeometry(width: 10, depth: 10), mirrorMaterial))
+  ..addComponent(PlanarReflectorComponent());
+scene.add(mirror);
+```
+
+And the surface's material is a `.fmat` that declares the `planar_reflection` engine input and samples `GetPlanarReflection()` (mirrored scene color in rgb, `a` 1 while a capture is bound; fall back to the environment reflection at `a == 0`). A worked mirror lives at `examples/flutter_app/assets/planar_mirror.fmat`.
+
+| Constructor arg | Default | What it does |
+| --- | --- | --- |
+| `resolutionScale` | `0.5` | Capture resolution relative to the view (clamped `0.1..1.0`). The fragment-cost lever. |
+| `layerMask` | all layers | What renders into the capture. The draw-cost lever. |
+| `reflectionGroupId` | `-1` | Co-planar surfaces sharing a non-negative id share one capture per frame; `-1` means an own capture. |
+| `clipBias` | `1e-3` | World-space offset of the clip plane in front of the mirror, keeping the surface itself out of the capture. |
+| `localNormal` | local `+Y` | The mirror plane's facing direction in node space. |
+
+The capture is a second scene submission per reflection group per frame: its CPU and draw-call cost scales with scene complexity, not just resolution. It reuses the frame's shadow atlas and runs without screen-space post; reflectors seen inside a capture draw their base look, so captures never recurse.
+
+---
+
 ## Cost and budget
 
 Post effects are screen-space passes; they cost per output pixel, not per triangle. Rough order, cheapest first:
 
-- **Nearly free.** Tone mapping, exposure, color grading, vignette, chromatic aberration, film grain, bloom. The `clean` and `stylized` looks live here.
-- **Moderate.** Ambient occlusion (keep `ambientOcclusionHalfResolution: true`), fog.
-- **Expensive.** SSR, god rays, depth of field, and especially SSGI (`ambientOcclusionIndirectLight > 0`). Each adds ray-marching or gather passes.
+- **Nearly free.** Tone mapping, exposure, color grading, vignette, chromatic aberration, film grain, bloom (with lens flares). The `clean` and `stylized` looks live here.
+- **Moderate.** Ambient occlusion (keep `ambientOcclusionHalfResolution: true`), fog, `fxaa`, `smaa` (~3x `fxaa`). `msaa` is nearly free on mobile GPUs but costs more elsewhere.
+- **Expensive.** SSR, god rays, depth of field, and especially SSGI (`ambientOcclusionIndirectLight > 0`). Each adds ray-marching or gather passes. A reflection probe's capture renders the scene six times, so capture on activate or an occasional `requestCapture()`, never per frame.
 
 Budget guidance:
 
