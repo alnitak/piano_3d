@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_scene/scene.dart';
@@ -123,10 +124,9 @@ class _Piano3DSceneScreenState extends State<Piano3DSceneScreen>
       bloomIntensity: 0.22,
       bloomScatter: 0.72,
       ambientOcclusionEnabled: true,
-      ambientOcclusionMethod: AmbientOcclusionMethod.groundTruth,
-      ambientOcclusionIntensity: 1.1,
+      ambientOcclusionMethod: AmbientOcclusionMethod.obscurance,
+      ambientOcclusionIntensity: 0.8,
       ambientOcclusionHalfResolution: true,
-      screenSpaceReflectionsEnabled: true,
       screenSpaceReflectionsIntensity: 0.3,
       vignetteEnabled: true,
       vignetteIntensity: 0.32,
